@@ -97,9 +97,40 @@ PSR-2[^5]. The code examples above are following these standards.
 
 For further information have a look at the exhaustive documentation[^6].
 
+## Composer
+
+The dependency managament tool for PHP is called Composer[^7]. It allows to
+reuse libraries or packages other people have written. Therefore every project
+has a `composer.json` file in its root directory. The file consists of an JSON
+object like in the following example:
+
+```json
+{
+    "require": {
+        "monolog/monolog": "^1.22.0"
+    }
+}
+```
+
+The `require` key is the most important one, and describes the dependencies of
+the project. In this case it depends on monolog, a logging library. The name
+consists of a vendor and project part, which is divided by a slash. This key is
+representing the name of the project, whereby the value defines the versions
+which can be used. The `^` means that every version starting with the given one
+and up to the next major version (2.0 in this case) might be used. There is a
+reference on the Composer documentation about all the available version
+operators[^8].
+
+In addition to installing the dependencies Composer is also responsible for
+generating the autoloader, which allows us to use components based on the full
+qualified name consisting of the namespace and the class name with the `use`
+statement we have already seen before.
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
 [^4]: <https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-1-basic-coding-standard.md>
 [^5]: <https://github.com/php-fig/fig-standards/blob/master/accepted/PSR-2-coding-style-guide.md>
 [^6]: <http://php.net/manual/en/>
+[^7]: <https://getcomposer.org/>
+[^8]: <https://getcomposer.org/doc/articles/versions.md>
