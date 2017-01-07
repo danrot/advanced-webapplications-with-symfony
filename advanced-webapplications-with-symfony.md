@@ -126,6 +126,36 @@ generating the autoloader, which allows us to use components based on the full
 qualified name consisting of the namespace and the class name with the `use`
 statement we have already seen before.
 
+## Symfony
+
+Symfony is a framework for building web applications with PHP. There is a
+standard edition already defining the folder structure. The Composer command
+`create-project` can be used to create a new application built on top of the
+Symfony Standard Edition[^9]:
+
+```bash
+composer create-project symfony/framework-standard-edition
+```
+
+This command will download the standard edition and install all required
+dependencies. It also asks for a few parameters being installation specific,
+like the parameters for the database connection. You can leave the defaults,
+unless you have reason to change them. Check the Symfony documentation[^10] for
+more details about the installation process.
+
+One of the most important files in the standard directory is `bin/console`. It
+allows to run tasks defined by the Symfony application. E.g. `server:run`
+starts a webserver we can use for development. This makes it easier to run this
+application, since no separate webserver has to be set up. Also, since the
+webserver is running under the same user, there won't be any permission issues.
+
+So the next line on the terminal should run a webserver on
+<http://localhost:8000>, where a welcome screen should be shown for now.
+
+```bash
+bin/console server:run
+```
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -134,3 +164,5 @@ statement we have already seen before.
 [^6]: <http://php.net/manual/en/>
 [^7]: <https://getcomposer.org/>
 [^8]: <https://getcomposer.org/doc/articles/versions.md>
+[^9]: <https://github.com/symfony/symfony-standard>
+[^10]: <http://symfony.com/doc/current/setup.html>
