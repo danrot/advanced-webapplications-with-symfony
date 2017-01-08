@@ -277,6 +277,78 @@ This configuration described that every file in the `Controller` folder of the
 `AppBundle` might contain `@Route` annotations, which must be considered during
 the routing process.
 
+# Templating
+
+Manually composing a string as seen in the previous example when creating the
+`Response` object works, but will get very cumbersome when returning complex
+HTML structures. The goal of template languages is to make working with such
+structures more enjoyable. Therefore Symfony is primarily used with Twig[^14].
+
+Think of the templates as the view part of the application, which only covers
+presentation, but not business logic. That means instead the controller is
+composing the HTML itself it is delegating this task to the template engine.
+The base controller of Symfony has the `render` method for that:
+
+```php
+<?php
+namespace AppBundle\Controller;
+
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Response;
+
+class IndexController extends Controller
+{
+    /**
+     * @Route("/{name}", name="homepage")
+     */
+    public function indexAction($name = 'World')
+    {
+        return $this->render('index.html.twig', [
+            'name' => $name,
+        ]);
+    }
+}
+```
+
+The `render` method returns a `Response` object with the content of the
+template, so we can simply return its return value instead of creating our own
+`Response` object.
+
+The first argument `index.html.twig` is the name of the template. It is
+locating the path to the template starting from the `app/Resources/views`
+directory. Mind that the templates might also be located in other places, which
+might be useful when developing a reusable library. Again, the Symfony
+documentation[^15] explains how to access the templates in this case.
+
+The second argument is an array containing the data for the template. The array
+defines the name of the variables in the twig template and its value.
+
+A simple twig template rendering the name in the title and in the body should
+therefore be located at `app/Resources/views/index.html.twig` and can look like
+this:
+
+```html
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Hello {{name}}!</title>
+    </head>
+    <body>
+        <h1>Hello {{name}}, welcome on our Homepage!</h1>
+    </body>
+</html>
+```
+
+`{{name}}` is the way you print the content of the `name` variable. But twig
+can do a lot more than only replacing placeholders, it has also control
+structures that help implementing presentation logic in twig templates, like
+`if` to e.g. display certain data only on a specific condition or `for` to loop
+over an array of data. The twig documentation[^16] has a page explaining all
+the methods important for developers implementing templates. This page also
+mentions template inheritance[^17], which is very useful for almost every real life
+web application, since it allows to define a base frame for every page.
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -290,3 +362,7 @@ the routing process.
 [^11]: <http://symfony.com/doc/current/components/http_foundation.html>
 [^12]: <http://symfony.com/doc/current/routing.html>
 [^13]: <http://symfony.com/doc/current/routing.html#generating-urls>
+[^14]: <http://twig.sensiolabs.org/>
+[^15]: <http://symfony.com/doc/current/templating.html#template-naming-and-locations>
+[^16]: <http://twig.sensiolabs.org/doc/1.x/templates.html>
+[^17]: <http://twig.sensiolabs.org/doc/1.x/templates.html#template-inheritance>
