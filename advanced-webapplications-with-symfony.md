@@ -349,6 +349,43 @@ the methods important for developers implementing templates. This page also
 mentions template inheritance[^17], which is very useful for almost every real life
 web application, since it allows to define a base frame for every page.
 
+# Database
+
+Almost every reasonable real life web application has to store data somewhere.
+A quite common approach is to use a relational database for that. MySQL works
+pretty good with PHP and is also OpenSource, so these two technologies are a
+very popular combination.
+
+There are different ways to access a MySQL database in PHP. There is the mysqli
+extension[^18], which solely allows to work with MySQL. A second option is the
+PDO extension[^19], which is also a data access abstraction layer. That means
+the same methods are used for every database, but the SQL sent to these
+databases have still to be adapted.
+
+As the documentation says Symfony is not coupled to any of these methods[^20],
+but it provides a tight integration for doctrine[^21], which was heavily
+inspired by the Java ORM Hibernate.
+
+## Configuration
+
+When creating a new project with Symfony Composer will already ask for some
+parameters. This also includes the database connection parameters:
+
+* `database_host`
+* `database_port`
+* `database_name`
+* `database_user`
+* `database_password`
+
+These parameters are stored in the `app/config/parameters.yml` file, and can
+be adapted later as well.
+
+There is a simple command to create the configured database:
+
+```bash
+bin/console doctrine:database:create
+```
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -366,3 +403,7 @@ web application, since it allows to define a base frame for every page.
 [^15]: <http://symfony.com/doc/current/templating.html#template-naming-and-locations>
 [^16]: <http://twig.sensiolabs.org/doc/1.x/templates.html>
 [^17]: <http://twig.sensiolabs.org/doc/1.x/templates.html#template-inheritance>
+[^18]: <http://php.net/manual/en/book.mysqli.php>
+[^19]: <http://php.net/manual/en/book.pdo.php>
+[^20]: <http://symfony.com/doc/current/doctrine.html>
+[^21]: <http://www.doctrine-project.org/>
