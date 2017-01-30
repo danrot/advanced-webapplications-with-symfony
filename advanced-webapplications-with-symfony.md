@@ -386,6 +386,240 @@ There is a simple command to create the configured database:
 bin/console doctrine:database:create
 ```
 
+## Entities
+
+Doctrine is an object relational mapper, which means that it is persisting
+objects into a relational database. Therefore it needs some objects to do so.
+These objects are called entities, and they are defined by a class. There are
+no rules where to put the class, but it makes sense to have a `Entity` folder
+in your Bundle.
+
+The given example uses a `Product` and `Order` entity for illustration
+purposes.
+
+```php
+// src/AppBundle/Entity/Product.php
+<?php
+
+namespace AppBundle\Entity;
+
+class Product
+{
+    /**
+     * @var string
+     */
+    private $name;
+
+    public function __construct($name)
+    {
+        $this->name = $name;
+    }
+
+    public function getName()
+    {
+        return $this->name;
+    }
+
+    public function setName($name)
+    {
+        $this->name = $name;
+    }
+}
+```
+
+The `Product` entity consists of only a name, and has no relations to other
+entities.
+
+```php
+
+// src/AppBundle/Entity/Order.php
+<?php
+
+namespace AppBundle\Entity;
+
+use AppBundle\Entity\Product;
+
+class Order
+{
+    /**
+     * @var Product[]
+     */
+    private $products;
+
+    public function __construct(array $products = [])
+    {
+        $this->products = $products;
+    }
+
+    public function getProducts()
+    {
+        return $this->products;
+    }
+
+    public function addProduct(Product $product)
+    {
+        $this->products[] = $product;
+    }
+}
+```
+
+The `Order` entity is only a list of products, for a more complete and complex
+example more information would be needed.
+
+It is very important to see here, that the entities have no dependencies on
+doctrine at all. This is the most important characteristics of the data mapper
+pattern[^22], which doctrine is implementing.
+
+## Mapping
+
+In order to correctly handle the entities doctrine needs some metadata about
+them. As with the routes there are three possibilities to define this metadata:
+Annotations, XML and YAML. Annotations are easy to use, because they are
+directly connected to your code. For this reason they are the first choice of
+the Symfony Best Practices[^23].
+
+However, keep in mind that the direct connection is also their biggest
+weakness, since the metadata information is tightly coupled to the code. So for
+reusable libraries XML or YAML are the preferable way to specify the metadata.
+
+Since this guide is about building individual applications it will still use
+annotations for the mapping. Therefore the mapping namespace must be included
+and used for the annotations, as in the following example in the Product:
+
+```php
+<?php
+
+namespace AppBundle\Entity;
+
+use AppBundle\Entity\Order;
+use Doctrine\ORM\Mapping as ORM;
+use Ramsey\Uuid\Uuid;
+
+/**
+ * @ORM\Entity
+ */
+class Product
+{
+    /**
+     * @ORM\Id
+     * @ORM\Column(type="guid")
+     * @var string
+     */
+    private $uuid;
+
+    /**
+     * @ORM\Column(type="string")
+     * @var string
+     */
+    private $name;
+
+    /**
+     * @ORM\ManyToOne(targetEntity="Order", inversedBy="products")
+     * @ORM\JoinColumn(name="order_uuid", referencedColumnName="uuid")
+     * @var Order
+     */
+    private $order;
+
+    public function __construct($name)
+    {
+        $this->uuid = Uuid::uuid4();
+        $this->name = $name;
+    }
+
+    public function getName()
+    {
+        return $this->name;
+    }
+
+    public function setName($name)
+    {
+        $this->name = $name;
+    }
+}
+```
+
+Mind that there have been two additions, which are somehow database related.
+The first one is the UUID, which allows us to identify a product. Having such
+a value is a good idea anyway. The example makes use of a UUID because of
+various reasons[^24].
+
+The other thing is a relation to an order, although we might not want to have
+that in our domain model. This is because of a technical limitation: The
+foreign key in a relational model has to be written on the many-side, although
+in our use case it might be more important to have a relation from the order to
+the product. The `JoinColumn` annotation describes the name of the column
+storing the foreign key (`order_uuid`) and the name of the column in the other
+entity (`uuid`). The `ManyToOne` annotation defines the other side of the
+relation and the entity variable containing the reference to the product.
+
+```php
+<?php
+
+namespace AppBundle\Entity;
+
+use AppBundle\Entity\Product;
+use Doctrine\ORM\Mapping as ORM;
+use Ramsey\Uuid\Uuid;
+
+/**
+ * @ORM\Entity
+ */
+class Order
+{
+    /**
+     * @ORM\Id
+     * @ORM\Column(type="guid")
+     * @var string
+     */
+    private $uuid;
+
+    /**
+     * @ORM\OneToMany(targetEntity="Product", mappedBy="order")
+     * @var Product[]
+     */
+    private $products;
+
+    public function __construct(array $products = [])
+    {
+        $this->uuid = Uuid::uuid4();
+        $this->products = $products;
+    }
+
+    public function getProducts()
+    {
+        return $this->products;
+    }
+
+    public function addProduct(Product $product)
+    {
+        $this->products[] = $product;
+    }
+}
+
+```
+
+The Order entity also has an UUID and the other side of the order-product
+relation. It does not include the `JoinColumn` annotation, since this field is
+not represented in the database. But doctrine needs this metadata in order to
+make the relation work in both directions.
+
+After the metadata mapping has been created the following command will create
+the database schema:
+
+```bash
+bin/console doctrine:schema:create
+```
+
+If a schema was already existing before, the following command will update the
+schema:
+
+```bash
+bin/console doctrine:schema:update --force
+```
+
+Be aware that this command should not be used in production, since the doctrine
+migrations[^25] are doing a much better job.
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -407,3 +641,7 @@ bin/console doctrine:database:create
 [^19]: <http://php.net/manual/en/book.pdo.php>
 [^20]: <http://symfony.com/doc/current/doctrine.html>
 [^21]: <http://www.doctrine-project.org/>
+[^22]: <https://martinfowler.com/eaaCatalog/dataMapper.html>
+[^23]: <http://symfony.com/doc/current/best_practices/business-logic.html#doctrine-mapping-information>
+[^24]: <https://philsturgeon.uk/http/2015/09/03/auto-incrementing-to-destruction/>
+[^25]: <http://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html>
