@@ -620,6 +620,67 @@ bin/console doctrine:schema:update --force
 Be aware that this command should not be used in production, since the doctrine
 migrations[^25] are doing a much better job.
 
+## Usage
+
+The following code shows how to insert data into the database. This code can be
+used in a Symfony command[^26], which is a nice place to play around with new
+stuff, because they are very easy to setup.
+
+```php
+$entityManager = $this->getContainer()
+    ->get('doctrine.orm.entity_manager');
+
+$product = new Product('Toaster');
+
+$entityManager->persist($product);
+$entityManager->flush();
+```
+
+The `EntityManager` is the public API offered by doctrine to work with
+entities. When a new `Product` is created doctrine does not know about it yet.
+Therefore the `persist` method has to be called. However, this only means that
+the data is handled by doctrine from now on, but there has no insertion
+happened yet. The data will be written to the database when the `flush` method
+is called.
+
+For reading values from the database there are various opportunities[^27]. The
+easiest one is to make use of a `Repository`. Every entity has its own
+repository, which can be retrieved from the `EntityManager` by passing a
+combination of the bundle and entity name to the `getRepository` method. The
+repository has various methods to load entities it is responsible for, whereby
+`find` is the simplest one, since it simply takes the ID of the entity and
+returns a matching object.
+
+This object can then be altered in PHP, and the values in the database will be
+adjusted as soon as `flush` is again called on the `EntityManager`. Mind that
+it is not necessary anymore to call `persist`, because doctrine has already
+loaded the entity and therefore knows about it.
+
+```php
+$entityManager = $this->getContainer()
+    ->get('doctrine.orm.entity_manager');
+
+$product = $entityManager->getRepository('AppBundle:Product')
+    ->find('some-uuid');
+$product->setName('Roaster');
+
+$entityManager->flush();
+```
+
+Entities can also be deleted by passing the reference to the `remove` method of
+the `EntityManager` and calling `flush` afterwards:
+
+```php
+$entityManager = $this->getContainer()
+    ->get('doctrine.orm.entity_manager');
+
+$product = $entityManager->getRepository('AppBundle:Product')
+    ->find('some-uuid');
+
+$entityManager->remove($product);
+$entityManager->flush();
+```
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -645,3 +706,5 @@ migrations[^25] are doing a much better job.
 [^23]: <http://symfony.com/doc/current/best_practices/business-logic.html#doctrine-mapping-information>
 [^24]: <https://philsturgeon.uk/http/2015/09/03/auto-incrementing-to-destruction/>
 [^25]: <http://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html>
+[^26]: <http://symfony.com/doc/current/console.html>
+[^27]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/working-with-objects.html#querying>
