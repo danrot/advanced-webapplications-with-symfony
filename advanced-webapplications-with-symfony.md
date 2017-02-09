@@ -394,7 +394,7 @@ These objects are called entities, and they are defined by a class. There are
 no rules where to put the class, but it makes sense to have a `Entity` folder
 in your Bundle.
 
-The given example uses a `Product` and `Order` entity for illustration
+The given example uses a `Product` and `Purchase` entity for illustration
 purposes.
 
 ```php
@@ -432,14 +432,14 @@ entities.
 
 ```php
 
-// src/AppBundle/Entity/Order.php
+// src/AppBundle/Entity/Purchase.php
 <?php
 
 namespace AppBundle\Entity;
 
 use AppBundle\Entity\Product;
 
-class Order
+class Purchase
 {
     /**
      * @var Product[]
@@ -463,7 +463,7 @@ class Order
 }
 ```
 
-The `Order` entity is only a list of products, for a more complete and complex
+The `Purchase` entity is only a list of products, for a more complete and complex
 example more information would be needed.
 
 It is very important to see here, that the entities have no dependencies on
@@ -491,7 +491,7 @@ and used for the annotations, as in the following example in the Product:
 
 namespace AppBundle\Entity;
 
-use AppBundle\Entity\Order;
+use AppBundle\Entity\Purchase;
 use Doctrine\ORM\Mapping as ORM;
 use Ramsey\Uuid\Uuid;
 
@@ -514,11 +514,11 @@ class Product
     private $name;
 
     /**
-     * @ORM\ManyToOne(targetEntity="Order", inversedBy="products")
-     * @ORM\JoinColumn(name="order_uuid", referencedColumnName="uuid")
-     * @var Order
+     * @ORM\ManyToOne(targetEntity="Purchase", inversedBy="products")
+     * @ORM\JoinColumn(name="purchase_uuid", referencedColumnName="uuid")
+     * @var Purchase
      */
-    private $order;
+    private $purchase;
 
     public function __construct($name)
     {
@@ -548,7 +548,7 @@ that in our domain model. This is because of a technical limitation: The
 foreign key in a relational model has to be written on the many-side, although
 in our use case it might be more important to have a relation from the order to
 the product. The `JoinColumn` annotation describes the name of the column
-storing the foreign key (`order_uuid`) and the name of the column in the other
+storing the foreign key (`purchase_uuid`) and the name of the column in the other
 entity (`uuid`). The `ManyToOne` annotation defines the other side of the
 relation and the entity variable containing the reference to the product.
 
@@ -564,7 +564,7 @@ use Ramsey\Uuid\Uuid;
 /**
  * @ORM\Entity
  */
-class Order
+class Purchase
 {
     /**
      * @ORM\Id
@@ -574,7 +574,7 @@ class Order
     private $uuid;
 
     /**
-     * @ORM\OneToMany(targetEntity="Product", mappedBy="order")
+     * @ORM\OneToMany(targetEntity="Product", mappedBy="purchase")
      * @var Product[]
      */
     private $products;
@@ -598,7 +598,7 @@ class Order
 
 ```
 
-The Order entity also has an UUID and the other side of the order-product
+The purchase entity also has an UUID and the other side of the order-product
 relation. It does not include the `JoinColumn` annotation, since this field is
 not represented in the database. But doctrine needs this metadata in order to
 make the relation work in both directions.
@@ -681,6 +681,220 @@ $entityManager->remove($product);
 $entityManager->flush();
 ```
 
+## Optimizations
+
+Reading data from the database as explained above can have a serious perfomance
+impact, especially when associations are included. One problem is overfetching,
+meaning that more data than needed is loaded. However, the queries above have a
+different problem. When loading a `Purchase` object and accessing the
+association containing the `Product`, the `Product` entities will be lazily
+instantiated, and that includes another database call.
+
+### DQL
+
+The Doctrine Query Language[^28] is one way to tackle this problem. It is a
+language similar to SQL, but works with objects instead of database tables and
+rows.
+
+It can solve problems, which occur when loading entities in the following way:
+
+```php
+$purchaseRepository = $this->getDoctrine()
+    ->getRepository('AppBundle:Purchase');
+
+$purchase = $purchaseRepository->find($id);
+$products = $purchase->getProducts();
+```
+
+This code will create database queries when calling the `find` method on the
+`$purchaseRepository` and when lazily loading the products when calling
+`getProducts` on `$purchase`. The latter one can be easily avoided with a DQL
+query:
+
+```php
+$query = $this->getDoctrine()
+    ->getManager()
+    ->createQuery(
+        'SELECT pu, pr'
+        . ' FROM AppBundle:Purchase pu'
+        . ' JOIN pu.products pr'
+        . ' WHERE pu.uuid = :uuid'
+    );
+$query->setParameter('uuid', $id);
+
+$purchase = $query->getSingleResult();
+$products = $purchase->getProducts();
+```
+
+In this case `getProducts` will not query the database another time, because
+the `JOIN` in the DQL already loads the products eagerly. If only the products
+are needed the `JOIN` can be avoided in general, making the query even faster:
+
+```php
+$query = $this->getDoctrine()
+    ->getManager()
+    ->createQuery(
+        'SELECT pr'
+        . ' FROM AppBundle:Product pr'
+        . ' WHERE pr.purchase = :uuid'
+    );
+$query->setParameter('uuid', $id);
+
+$products = $query->getResult();
+```
+
+In case the object graph is not needed the performance can also be increased by
+using a different hydration mode[^29].
+
+There is also a QueryBuilder[^30], which uses an object-oriented interface to
+create query.
+
+### Custom repositories
+
+DQL queries are a great way to improve the performance of a web application,
+but it would be very bad for maintainability to spread them all over the
+application.
+
+For this reason doctrine has introduced custom repositories[^31], which allow
+to group all the DQL queries in a meaningful way. The first thing to do is to
+implement a repository class:
+
+```php
+<?php
+
+namespace AppBundle\Repository;
+
+use Doctrine\ORM\EntityRepository;
+
+class ProductRepository extends EntityRepository
+{
+    public function getProductsByPurchaseUuid($purchaseUuid)
+    {
+        return $this->createQueryBuilder('p')
+            ->where('p.purchase = :purchaseUuid')
+            ->setParameter('purchaseUuid', $purchaseUuid)
+            ->getQuery()
+            ->getResult();
+    }
+}
+```
+
+The class has to inherit from the `EntityRepository` base implementation of
+doctrine. The example also uses the previously mentioned `QueryBuilder`, whose
+initialization is handled by the parent class.
+
+Then doctrine has to be configured in a way that it knows about the custom
+repository class. This is done in the mapping configuration, in the following
+example annotations are used, but the same is possible with YAML and XML:
+
+```php
+<?php
+
+namespace AppBundle\Entity;
+
+use AppBundle\Entity\Purchase;
+use Doctrine\ORM\Mapping as ORM;
+use Ramsey\Uuid\Uuid;
+
+/**
+ * @ORM\Entity(repositoryClass="AppBundle\Repository\ProductRepository")
+ */
+class Product
+{
+    // ...
+}
+```
+
+Afterwards the new repository can be used to e.g. load all the products for a
+given purchase in the controller:
+
+```php
+$productRepository = $this->getDoctrine()
+    ->getRepository('AppBundle:Product');
+
+return $this->render('purchase.html.twig', [
+    'products' => $productRepository->getProductsByPurchaseUuid($id)
+]);
+```
+
+### Caching
+
+Doctrine has three different caching possibilities to improve performance: The
+metadata cache, the query cache and the result cache[^32]. Symfony allows to
+easily set these caches in its configuration[^33].
+
+Doctrine has adapter to different cache systems. APCu[^34] is one of them, and
+will serve as an example. All the different adapters can be used for all three
+types of caches.
+
+Using the metadata and query cache is always highly recommended in a production
+environment. The metadata cache will avoid reading the mapping metadata from
+annotations, XML or YAML again for every request, and the query cache does the
+same for the transition from DQL to SQL queries.
+
+The result cache is a little bit different. It caches the results from the
+queries, so that no database call is made for the configured duration. That
+means that a change in the database is not immediately reflected in the web
+application. Although it is a huge performance boost it might not always be an
+acceptable tradeoff. That is also the reason this cache type has to be
+activated for each query.
+
+These caches should be activated in the `app/config/config_prod.yml` file,
+which is only loaded in a production environment.
+
+```yaml
+doctrine:
+    orm:
+        metadata_cache_driver: apcu
+        query_cache_driver: apcu
+        result_cache_driver: apcu
+```
+
+The caches for metadata and queries are immediately active for the entire
+application. Enabling the result cache for certain queries is just a
+`useResultCache(true)` call on the query. The following snippet uses the
+`QueryBuilder` from the previous `ProductRepository` example.
+
+```php
+$this->createQueryBuilder('p')
+    ->where('p.purchase = :purchaseUuid')
+    ->setParameter('purchaseUuid', $purchaseUuid)
+    ->getQuery()
+    ->useResultCache(true)
+    ->getResult();
+```
+
+### Native Queries
+
+Native queries[^35] should only be used if the previous optimizations are not
+good enough, because they bypass the doctrine mapping and have to be mapped
+once more, which is a tedious task. Therefore they allow to add vendor-specific
+optimizations and stored procedures to the query.
+
+The query is created using the `createNativeQuery` method of the
+`EntityManager`, which takes the SQL query and a `ResultSetMapping`, which
+describes how the data should be mapped to the object. This looks like the
+following example when implemented in the `ProductRepository`:
+
+```php
+$resultSetMappingBuilder = $this->createResultSetMappingBuilder('p');
+
+$sql = sprintf(
+    'SELECT %s FROM product p WHERE p.purchase_uuid = ?',
+    $resultSetMappingBuilder->generateSelectClause(['p' => 'p'])
+);
+
+$query = $this->getEntityManager()
+    ->createNativeQuery($sql, $resultSetMappingBuilder);
+$query->setParameter(1, $purchaseUuid);
+
+return $query->getResult();
+```
+
+Implementing the `ResultSetMapping` can get quite complicated for big queries
+and adds mental overhead, for these reasons it should really be the last
+resort.
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -708,3 +922,11 @@ $entityManager->flush();
 [^25]: <http://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html>
 [^26]: <http://symfony.com/doc/current/console.html>
 [^27]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/working-with-objects.html#querying>
+[^28]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/dql-doctrine-query-language.html>
+[^29]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/dql-doctrine-query-language.html#hydration-modes>
+[^30]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/query-builder.html>
+[^31]: <http://symfony.com/doc/current/doctrine/repository.html>
+[^32]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/caching.html#integrating-with-the-orm>
+[^33]: <https://symfony.com/doc/current/reference/configuration/doctrine.html#caching-drivers>
+[^34]: <http://php.net/manual/en/book.apcu.php>
+[^35]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/native-sql.html>
