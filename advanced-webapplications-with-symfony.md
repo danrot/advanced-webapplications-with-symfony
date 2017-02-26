@@ -895,6 +895,273 @@ Implementing the `ResultSetMapping` can get quite complicated for big queries
 and adds mental overhead, for these reasons it should really be the last
 resort.
 
+# Forms & Validation
+
+A very important part of a web application is the interaction with the user.
+This interaction can be handled with forms[^36], which is handled by a separate
+component in Symfony. There is another component for validations. These two
+components are a powerful combination together.
+
+## Forms
+
+Forms can be build using a `FormBuilder`, which combines multiple `FormType`s
+into a form, which can be rendered to HTML and convert data from a request to
+an object.
+
+Therefore it is important that all accessed properties are either public or
+have getters and setters. As an example the `Purchase` class is used:
+
+```php
+<?php
+
+namespace AppBundle\Entity;
+
+use AppBundle\Entity\Product;
+use Doctrine\ORM\Mapping as ORM;
+use Ramsey\Uuid\Uuid;
+
+/**
+ * @ORM\Entity
+ */
+class Purchase
+{
+    /**
+     * @ORM\Id
+     * @ORM\Column(type="guid")
+     * @var string
+     */
+    private $uuid;
+
+    /**
+     * @ORM\Column(type="datetime")
+     * @var \DateTime
+     */
+    private $date;
+
+    /**
+     * @ORM\OneToMany(targetEntity="Product", mappedBy="purchase")
+     * @var Product[]
+     */
+    private $products;
+
+    public function __construct(\DateTime $date = null, array $products = [])
+    {
+        $this->uuid = Uuid::uuid4();
+        $this->date = $date ?: new \DateTime();
+        $this->products = $products;
+    }
+
+    public function getUuid()
+    {
+        return $this->uuid;
+    }
+
+    public function getDate()
+    {
+        return $this->date;
+    }
+
+    public function setDate(\DateTime $date)
+    {
+        $this->date = $date;
+    }
+
+    public function setProducts($products)
+    {
+        $this->products = $products;
+    }
+
+    public function getProducts()
+    {
+        return $this->products;
+    }
+
+    public function addProduct(Product $product)
+    {
+        $this->products[] = $product;
+    }
+}
+```
+
+The mapping from a form to the class is done in a `FormType`:
+
+```php
+<?php
+namespace AppBundle\Form;
+
+use AppBundle\Entity\Purchase;
+use Symfony\Bridge\Doctrine\Form\Type\EntityType;
+use Symfony\Component\Form\AbstractType;
+use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\Extension\Core\Type\DateTimeType;
+use Symfony\Component\Form\Extension\Core\Type\SubmitType;
+use Symfony\Component\OptionsResolver\OptionsResolver;
+
+class PurchaseType extends AbstractType
+{
+    public function buildForm(FormBuilderInterface $builder, array $options)
+    {
+        $builder->add('date', DateTimeType::class)
+            ->add('products', EntityType::class, [
+                'class' => 'AppBundle:Product',
+                'choice_label' => 'name',
+                'multiple' => true,
+            ])
+            ->add('save', SubmitType::class);
+    }
+
+    public function configureOptions(OptionsResolver $resolver)
+    {
+        $resolver->setDefaults([
+            'data_class' => Purchase::class,
+        ]);
+    }
+}
+```
+
+The `FormBuilder` passed to the `buildForm` method can be used to build the
+form. With the `add` method new properties are added, which have to match the
+name of the properties of the described class. The second argument describes
+what kind of value that property holds. The Symfony documention[^37] contains a
+list of available built-in form types.
+
+The `EntityType` takes additional parameters, which are passed as third
+parameter to the `add` method. They describe which entity is loaded for a
+select.
+
+Finally the form has to be rendered in a controller. The form will be sent to
+the same action using `POST` as method. The form component knows if the form is
+already submitted and if the submitted data is valid. Hence the controller has
+to consider three different paths:
+
+* The form has not been submitted yet
+* The form has been submitted with invalid data
+* The form has been submitted with valid data
+
+```php
+<?php
+namespace AppBundle\Controller;
+
+use AppBundle\Entity\Product;
+use AppBundle\Entity\Purchase;
+use AppBundle\Form\ProductType;
+use AppBundle\Form\PurchaseType;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class IndexController extends Controller
+{
+    /**
+     * @Route("purchases/new", name="purchase_create")
+     */
+    public function newPurchaseAction(Request $request)
+    {
+        $purchase = new Purchase();
+        $form = $this->createForm(PurchaseType::class, $purchase);
+
+        $form->handleRequest($request);
+
+        if ($form->isSubmitted() && $form->isValid()) {
+            $purchase = $form->getData();
+
+            foreach ($purchase->getProducts() as $product) {
+                $product->setPurchase($purchase);
+            }
+
+            $entityManager = $this->getDoctrine()->getManager();
+            $entityManager->persist($purchase);
+            $entityManager->flush();
+
+            return $this->redirectToRoute('purchase', [
+                'id' => $purchase->getUuid(),
+            ]);
+        }
+
+        return $this->render('purchase.form.html.twig', [
+            'form' => $form->createView(),
+        ]);
+    }
+
+    /**
+     * @Route("/purchases/{id}", name="purchase")
+     */
+    public function purchaseAction($id)
+    {
+        $productRepository = $this->getDoctrine()
+            ->getRepository('AppBundle:Product');
+
+        return $this->render('purchase.html.twig', [
+            'products' => $productRepository->getProductsByPurchaseUuidNative($id),
+        ]);
+    }
+}
+```
+
+The `createForm` takes the previously defined `PurchaseType`. The created form
+will handle the given `Request`. The next `if` checks if the form has been
+submitted and is valid. In case it is the `Purchase` object will be returned
+from the `getData` method of the form and persist and flush it. In this special
+case all the `Product`s from the Purchase must be iterated, so that the
+`Purchase` object can be set on the `Product`. This is necessary because the
+`Product` is the owning side of the association between the `Product` and
+`Purchase`, and the data would not be saved otherwise.
+
+Afterwards the `redirectToRoute` method is called to redirect ths user to the
+just created product. It takes the name of the route and the passed parameters.
+
+In case the form was not submitted the form will be rendered using a template.
+When the case has already been submitted with invalid data, the validation
+errors will also be passed. Therefore the correct methods in twig have to be
+used:
+
+```jinja
+{{ form_start(form) }}
+{{ form_widget(form) }}
+{{ form_end(form) }}
+```
+
+`form_start` renders the start tag of the form, `form_widget` renders all the
+fields of the form and `form_end` render the end tag and hidden form fields.
+
+## Validation
+
+An important part of form management is the validation. Actually validation is
+a completely separate component in Symfony[^38]. However, the validation
+component is used when the `$form->isValid()` method is called. This call is
+actually not validating the form, but the object created by the form.
+
+Therefore the metadata about the validation has to be added to the actual
+object. The most simple validation to use is the `NotBlank` assertion, which
+looks something like this:
+
+```php
+<?php
+
+namespace AppBundle\Entity;
+
+use Symfony\Component\Validator\Constraints as Assert;
+
+class Product
+{
+    // ...
+
+    /**
+     * @ORM\Column(type="string")
+     * @Assert\NotBlank()
+     * @var string
+     */
+    private $name;
+
+    // ...
+}
+```
+
+There are of course a lot other assertions available. The documentation has a
+good overview of them [^39]. If none of them match the requirements it is also
+possible to develop an own validator[^40].
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -930,3 +1197,8 @@ resort.
 [^33]: <https://symfony.com/doc/current/reference/configuration/doctrine.html#caching-drivers>
 [^34]: <http://php.net/manual/en/book.apcu.php>
 [^35]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/native-sql.html>
+[^36]: <http://symfony.com/doc/current/forms.html>
+[^37]: <http://symfony.com/doc/current/forms.html#built-in-field-types>
+[^38]: <https://symfony.com/doc/current/validation.html>
+[^39]: <https://symfony.com/doc/current/validation.html#constraints>
+[^40]: <https://symfony.com/doc/current/validation/custom_constraint.html>
