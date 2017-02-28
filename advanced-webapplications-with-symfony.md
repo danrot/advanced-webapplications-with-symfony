@@ -349,6 +349,99 @@ the methods important for developers implementing templates. This page also
 mentions template inheritance[^17], which is very useful for almost every real life
 web application, since it allows to define a base frame for every page.
 
+# Translations
+
+Symfony comes with a translation component[^18], which can be used to translate
+static text in your application. The first thing that has to be done is to
+activate the translator in the configuration:
+
+```yaml
+framework:
+    translator: { fallbacks: ["%locale%"] }
+```
+
+There is already a commented line like that in the standard edition of Symfony.
+
+There are many ways to put the translations files, but the one recommended by
+the Symfony Best Practices is `app/Resources/translations`. This is also the
+one with the highest priority, meaning they take precedence over all the other
+locations. There are different formats to use, but XLIFF is the most popular
+one. So a file with the translation which was used in the previous template
+example should be named `app/Resources/translations/messages.en.xlf` might look
+like this:
+
+```xliff
+<?xml version="1.0"?>
+<xliff version="1.2" xmlns="urn:oasis:names:tc:xliff:document:1.2">
+    <file source-language="en" target-language="en"
+        datatype="plaintext" original="file.ext">
+        <body>
+            <trans-unit id="welcome">
+                <source>welcome</source>
+                <target>Hello %name%, welcome on our homepage</target>
+            </trans-unit>
+        </body>
+    </file>
+</xliff>
+```
+
+The translation can be used in PHP, e.g. when used in the Controller with
+`$this->get('translator')->trans()`:
+
+```php
+<?php
+namespace AppBundle\Controller;
+
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+class IndexController extends Controller
+{
+    /**
+     * @Route("/{_locale}/{name}", name="homepage")
+     */
+    public function indexAction($name = 'World')
+    {
+        return $this->render('index.html.twig', [
+            'name' => $name,
+            'greeting' => $this->get('translator')->trans(
+                'welcome',
+                ['%name%' => $name]
+            ),
+        ]);
+    }
+}
+```
+
+Mind the `{_locale}` parameter in the route. This means that the locale is
+included in the URL, so calling `/en/max` will set the locale to English,
+whereby `/de/max` will set the locale to German. This way the locale can be
+easily switched by using different URLs. The translator will use the other
+localization file if it exists and fall back to English as specified in the
+configuration.
+
+So adding German as another language is as easy as adding another
+`app/Resources/translations/messages.de.xlf` file, and changing the
+translations.
+
+But quite often the translation is used in the twig template. Therefore some
+twig methods are available. So instead of using the translator in the 
+controller the method can be called from the twig template:
+
+```jinja
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Hello {{name}}!</title>
+    </head>
+    <body>
+        <h1>{{ 'welcome'|trans({'%name%': name}) }}</h1>
+    </body>
+</html>
+```
+
 # Database
 
 Almost every reasonable real life web application has to store data somewhere.
@@ -357,13 +450,13 @@ pretty good with PHP and is also OpenSource, so these two technologies are a
 very popular combination.
 
 There are different ways to access a MySQL database in PHP. There is the mysqli
-extension[^18], which solely allows to work with MySQL. A second option is the
-PDO extension[^19], which is also a data access abstraction layer. That means
+extension[^19], which solely allows to work with MySQL. A second option is the
+PDO extension[^20], which is also a data access abstraction layer. That means
 the same methods are used for every database, but the SQL sent to these
 databases have still to be adapted.
 
-As the documentation says Symfony is not coupled to any of these methods[^20],
-but it provides a tight integration for doctrine[^21], which was heavily
+As the documentation says Symfony is not coupled to any of these methods[^21],
+but it provides a tight integration for doctrine[^22], which was heavily
 inspired by the Java ORM Hibernate.
 
 ## Configuration
@@ -468,7 +561,7 @@ example more information would be needed.
 
 It is very important to see here, that the entities have no dependencies on
 doctrine at all. This is the most important characteristics of the data mapper
-pattern[^22], which doctrine is implementing.
+pattern[^23], which doctrine is implementing.
 
 ## Mapping
 
@@ -476,7 +569,7 @@ In order to correctly handle the entities doctrine needs some metadata about
 them. As with the routes there are three possibilities to define this metadata:
 Annotations, XML and YAML. Annotations are easy to use, because they are
 directly connected to your code. For this reason they are the first choice of
-the Symfony Best Practices[^23].
+the Symfony Best Practices[^24].
 
 However, keep in mind that the direct connection is also their biggest
 weakness, since the metadata information is tightly coupled to the code. So for
@@ -541,7 +634,7 @@ class Product
 Mind that there have been two additions, which are somehow database related.
 The first one is the UUID, which allows us to identify a product. Having such
 a value is a good idea anyway. The example makes use of a UUID because of
-various reasons[^24].
+various reasons[^25].
 
 The other thing is a relation to an order, although we might not want to have
 that in our domain model. This is because of a technical limitation: The
@@ -618,12 +711,12 @@ bin/console doctrine:schema:update --force
 ```
 
 Be aware that this command should not be used in production, since the doctrine
-migrations[^25] are doing a much better job.
+migrations[^26] are doing a much better job.
 
 ## Usage
 
 The following code shows how to insert data into the database. This code can be
-used in a Symfony command[^26], which is a nice place to play around with new
+used in a Symfony command[^27], which is a nice place to play around with new
 stuff, because they are very easy to setup.
 
 ```php
@@ -643,7 +736,7 @@ the data is handled by doctrine from now on, but there has no insertion
 happened yet. The data will be written to the database when the `flush` method
 is called.
 
-For reading values from the database there are various opportunities[^27]. The
+For reading values from the database there are various opportunities[^28]. The
 easiest one is to make use of a `Repository`. Every entity has its own
 repository, which can be retrieved from the `EntityManager` by passing a
 combination of the bundle and entity name to the `getRepository` method. The
@@ -692,7 +785,7 @@ instantiated, and that includes another database call.
 
 ### DQL
 
-The Doctrine Query Language[^28] is one way to tackle this problem. It is a
+The Doctrine Query Language[^29] is one way to tackle this problem. It is a
 language similar to SQL, but works with objects instead of database tables and
 rows.
 
@@ -744,9 +837,9 @@ $products = $query->getResult();
 ```
 
 In case the object graph is not needed the performance can also be increased by
-using a different hydration mode[^29].
+using a different hydration mode[^30].
 
-There is also a QueryBuilder[^30], which uses an object-oriented interface to
+There is also a QueryBuilder[^31], which uses an object-oriented interface to
 create query.
 
 ### Custom repositories
@@ -755,7 +848,7 @@ DQL queries are a great way to improve the performance of a web application,
 but it would be very bad for maintainability to spread them all over the
 application.
 
-For this reason doctrine has introduced custom repositories[^31], which allow
+For this reason doctrine has introduced custom repositories[^32], which allow
 to group all the DQL queries in a meaningful way. The first thing to do is to
 implement a repository class:
 
@@ -820,10 +913,10 @@ return $this->render('purchase.html.twig', [
 ### Caching
 
 Doctrine has three different caching possibilities to improve performance: The
-metadata cache, the query cache and the result cache[^32]. Symfony allows to
-easily set these caches in its configuration[^33].
+metadata cache, the query cache and the result cache[^33]. Symfony allows to
+easily set these caches in its configuration[^34].
 
-Doctrine has adapter to different cache systems. APCu[^34] is one of them, and
+Doctrine has adapter to different cache systems. APCu[^35] is one of them, and
 will serve as an example. All the different adapters can be used for all three
 types of caches.
 
@@ -866,7 +959,7 @@ $this->createQueryBuilder('p')
 
 ### Native Queries
 
-Native queries[^35] should only be used if the previous optimizations are not
+Native queries[^36] should only be used if the previous optimizations are not
 good enough, because they bypass the doctrine mapping and have to be mapped
 once more, which is a tedious task. Therefore they allow to add vendor-specific
 optimizations and stored procedures to the query.
@@ -898,7 +991,7 @@ resort.
 # Forms & Validation
 
 A very important part of a web application is the interaction with the user.
-This interaction can be handled with forms[^36], which is handled by a separate
+This interaction can be handled with forms[^37], which is handled by a separate
 component in Symfony. There is another component for validations. These two
 components are a powerful combination together.
 
@@ -1022,7 +1115,7 @@ class PurchaseType extends AbstractType
 The `FormBuilder` passed to the `buildForm` method can be used to build the
 form. With the `add` method new properties are added, which have to match the
 name of the properties of the described class. The second argument describes
-what kind of value that property holds. The Symfony documention[^37] contains a
+what kind of value that property holds. The Symfony documention[^38] contains a
 list of available built-in form types.
 
 The `EntityType` takes additional parameters, which are passed as third
@@ -1128,7 +1221,7 @@ fields of the form and `form_end` render the end tag and hidden form fields.
 ## Validation
 
 An important part of form management is the validation. Actually validation is
-a completely separate component in Symfony[^38]. However, the validation
+a completely separate component in Symfony[^39]. However, the validation
 component is used when the `$form->isValid()` method is called. This call is
 actually not validating the form, but the object created by the form.
 
@@ -1159,8 +1252,8 @@ class Product
 ```
 
 There are of course a lot other assertions available. The documentation has a
-good overview of them [^39]. If none of them match the requirements it is also
-possible to develop an own validator[^40].
+good overview of them [^40]. If none of them match the requirements it is also
+possible to develop an own validator[^41].
 
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
@@ -1179,26 +1272,27 @@ possible to develop an own validator[^40].
 [^15]: <http://symfony.com/doc/current/templating.html#template-naming-and-locations>
 [^16]: <http://twig.sensiolabs.org/doc/1.x/templates.html>
 [^17]: <http://twig.sensiolabs.org/doc/1.x/templates.html#template-inheritance>
-[^18]: <http://php.net/manual/en/book.mysqli.php>
-[^19]: <http://php.net/manual/en/book.pdo.php>
-[^20]: <http://symfony.com/doc/current/doctrine.html>
-[^21]: <http://www.doctrine-project.org/>
-[^22]: <https://martinfowler.com/eaaCatalog/dataMapper.html>
-[^23]: <http://symfony.com/doc/current/best_practices/business-logic.html#doctrine-mapping-information>
-[^24]: <https://philsturgeon.uk/http/2015/09/03/auto-incrementing-to-destruction/>
-[^25]: <http://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html>
-[^26]: <http://symfony.com/doc/current/console.html>
-[^27]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/working-with-objects.html#querying>
-[^28]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/dql-doctrine-query-language.html>
-[^29]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/dql-doctrine-query-language.html#hydration-modes>
-[^30]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/query-builder.html>
-[^31]: <http://symfony.com/doc/current/doctrine/repository.html>
-[^32]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/caching.html#integrating-with-the-orm>
-[^33]: <https://symfony.com/doc/current/reference/configuration/doctrine.html#caching-drivers>
-[^34]: <http://php.net/manual/en/book.apcu.php>
-[^35]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/native-sql.html>
-[^36]: <http://symfony.com/doc/current/forms.html>
-[^37]: <http://symfony.com/doc/current/forms.html#built-in-field-types>
-[^38]: <https://symfony.com/doc/current/validation.html>
-[^39]: <https://symfony.com/doc/current/validation.html#constraints>
-[^40]: <https://symfony.com/doc/current/validation/custom_constraint.html>
+[^18]: <http://symfony.com/doc/current/translation.html>
+[^19]: <http://php.net/manual/en/book.mysqli.php>
+[^20]: <http://php.net/manual/en/book.pdo.php>
+[^21]: <http://symfony.com/doc/current/doctrine.html>
+[^22]: <http://www.doctrine-project.org/>
+[^23]: <https://martinfowler.com/eaaCatalog/dataMapper.html>
+[^24]: <http://symfony.com/doc/current/best_practices/business-logic.html#doctrine-mapping-information>
+[^25]: <https://philsturgeon.uk/http/2015/09/03/auto-incrementing-to-destruction/>
+[^26]: <http://symfony.com/doc/current/bundles/DoctrineMigrationsBundle/index.html>
+[^27]: <http://symfony.com/doc/current/console.html>
+[^28]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/working-with-objects.html#querying>
+[^29]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/dql-doctrine-query-language.html>
+[^30]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/dql-doctrine-query-language.html#hydration-modes>
+[^31]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/query-builder.html>
+[^32]: <http://symfony.com/doc/current/doctrine/repository.html>
+[^33]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/caching.html#integrating-with-the-orm>
+[^34]: <https://symfony.com/doc/current/reference/configuration/doctrine.html#caching-drivers>
+[^35]: <http://php.net/manual/en/book.apcu.php>
+[^36]: <http://docs.doctrine-project.org/projects/doctrine-orm/en/latest/reference/native-sql.html>
+[^37]: <http://symfony.com/doc/current/forms.html>
+[^38]: <http://symfony.com/doc/current/forms.html#built-in-field-types>
+[^39]: <https://symfony.com/doc/current/validation.html>
+[^40]: <https://symfony.com/doc/current/validation.html#constraints>
+[^41]: <https://symfony.com/doc/current/validation/custom_constraint.html>
