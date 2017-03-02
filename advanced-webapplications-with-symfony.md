@@ -1255,6 +1255,252 @@ There are of course a lot other assertions available. The documentation has a
 good overview of them [^40]. If none of them match the requirements it is also
 possible to develop an own validator[^41].
 
+# Security
+
+Symfony also comes with a security component[^42], which allows to check if a
+user is logged (Authentication) and if the user is allowed to take a certain
+action (Authorization).
+
+## Authentication
+
+The authentication is the job of the firewall component. The firewall is
+activated by default in the standard edition of Symfony. The configuration sits
+at `app/config/security.yml` and is imported in `app/config/config.yml` (the
+configuration file which is actually loaded). Mind that the firewall adds some
+serious overhead, so it should not be activated if it is not needed at all.
+This can be done by simply removing the security configuration.
+
+There can be multiple firewalls, and the default already comes with two of
+them. One is the `dev` firewall, which allows the developer tools of Symfony to
+also work correctly in a secured context.
+
+The other one is the `main` firewall. The name quite makes sense, because in
+most cases one firewall is enough. The firewall also defines how the user has
+to authenticate. The easiest option is `http_basic`, which uses the
+authentication built-in in HTTP:
+
+```yaml
+security:
+    firewalls:
+        main:
+            anonymous: ~
+            http_basic: ~
+```
+
+The anonymous part is required, because otherwise a user not being logged in
+won't be able to see any page at all. However, now the authentication will
+never be started, because all the pages can also be viewed as an anonymous
+user.
+
+However, if the `anonymous` configuration is omitted for now the authentication
+process kicks in. It asks for a username and password, but they are currently
+not saved anywhere. That is what `UserProvider`s are for. They can be
+configured under `security.providers`, and the easiest one is the built-in
+`in_memory` provider:
+
+```yaml
+security:
+    providers:
+        in_memory:
+            memory:
+                users:
+                    max:
+                        password: mustermann
+                        roles: 'ROLE_USER'
+```
+
+Now the user `max` with the password `mustermann` and the role `ROLE_USER`
+exists. The role can later be used to check if the user is allowed to trigger
+certain actions.
+
+The system will complain now that no encoder for the password is configured.
+For now the `plaintext` encoder can easily be used:
+
+```yaml
+security:
+    encoders:
+        Symfony\Component\Security\Core\User\User:
+            algorithm: plaintext
+```
+
+But never use that one on production! Check the Symfony documentation[^43] for
+better variants. Usually some hash with a salt should be used, so that it is
+very hard to retrieve the plaintext password from the value saved in the
+database.
+
+The `Symfony\Component\Security\Core\User\User` key is the full qualified name
+of the class representing a user. You can also create your own entity, as long
+as it is implementing the `UserInterface` from Symfony.
+
+However, in most cases the users should be loaded from the database. This can
+happen using Doctrine and an adapted security configuration[^44]. Modern web
+applications usually also do not use the HTTP authentication but a form
+embedded in the web application itself[^45].
+
+The user data is saved across different requests in the session[^46], which
+allows to circumvent the stateless architecture of HTTP.
+
+## Authorization
+
+The authentication part was about who the application is talking to. The second
+part about security in Symfony is to check if the authenticated user is allowed
+(or authorized) to trigger a specific action. There are different ways to
+implement this, which will be explained in this chapter.
+
+### Access Control
+
+The easiest way to restrict access is the `access_control` configuration[^47].
+This configuration is available at `security.access_control`. This option is an
+array containing an arbitrary number of rules. The first rule that matches will
+be the one that is used for deciding if the user is authorized for the given
+request.
+
+```yaml
+security:
+    access_control:
+        - {path: ^/purchases, roles: ROLE_USER}
+```
+
+This access control rule only allows only users with the role `ROLE_USER` to
+access any URL starting with `/purchases`. If the user is not logged in he
+gets a HTTP status code of 401 and will be asked to login. If the user already
+is authenticated but not in the `ROLE_USER` role a HTTP status code of 403 will
+be delivered, which means the access was denied.
+
+Since the `access_control` rule already applies when the URL starts with the
+given path it is a great tool to deny access for e.g. an entire administration
+interface.
+
+### Security Annotation
+
+The most favourite way to add security of the Symfony Best Practices[^48] are
+annotations. There is a `@Security` annotation[^49] available, which enables a
+developer to easily add a rule to a controller action, saying that the user
+must be assigned to a role in order to be allowed to see the response.
+
+```php
+<?php
+namespace AppBundle\Controller;
+
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Security;
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Response;
+
+
+class IndexController extends Controller
+{
+    /**
+     * @Route("/{name}", name="homepage")
+     * @Security("has_role('ROLE_USER')")
+     */
+    public function indexAction($name = 'World')
+    {
+        return $this->render('index.html.twig', [
+            'name' => $name,
+        ]);
+    }
+}
+```
+
+The `@Security("has_role('ROLE_USER')")` part means that the logged in user has
+to posses the `ROLE_USER` role, otherwise he is rejected the same way as with
+the `access_control` configuration.
+
+### Authorization Checker
+
+If both the annotation and the `access_control` rules are too simple for the
+use case, the authorization checker can be used directly. It populates a
+`isGranted` method, which takes e.g. a role and returns true if the user has
+access and otherwise it returns false. So if more complex logic has to be used
+to determine if access is granted that is a viable option:
+
+```php
+<?php
+namespace AppBundle\Controller;
+
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Security;
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+
+class IndexController extends Controller
+{
+    /**
+     * @Route("/{name}", name="homepage"})
+     */
+    public function indexAction($name = 'World')
+    {
+        if ($this->get('security.authorization_checker')->isGranted('ROLE_USER')) {
+            throw $this->createAccessDeniedException();
+        }
+
+        return $this->render('index.html.twig', [
+            'name' => $name,
+        ]);
+    }
+}
+```
+
+If all that has to be done is to throw an exception, the
+`denyAccessUnlessGranted` shortcut can be used, so the following code is
+equivalent.
+
+```php
+<?php
+namespace AppBundle\Controller;
+
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Route;
+use Sensio\Bundle\FrameworkExtraBundle\Configuration\Security;
+use Symfony\Bundle\FrameworkBundle\Controller\Controller;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+
+
+class IndexController extends Controller
+{
+    /**
+     * @Route("/{name}", name="homepage"})
+     */
+    public function indexAction($name = 'World')
+    {
+        $this->denyAccessUnlessGranted('ROLE_USER');
+
+        return $this->render('index.html.twig', [
+            'name' => $name,
+        ]);
+    }
+}
+```
+
+### Security Voter
+
+If all of the above does not meet the requirements, then there are still voters
+available. This is a class with the following interface:
+
+```php
+abstract class Voter implements VoterInterface
+{
+    abstract protected function supports($attribute, $subject);
+	abstract protected function voteOnAttribute(
+		$attribute,
+		$subject,
+		TokenInterface $token
+	);
+}
+```
+
+The `attribute` and `subject` are the first two parameters passed to the
+`isGranted` method of the `AuthorizationChecker`. An own implementation of a
+voter must implement the `supports` method, which checks if the voter can
+decide if access should be granted, and a `voteOnAttribute` which actually
+decides if access is granted.
+
+After registering the voter as described in the Symfony documentation[^50], it
+will be taken into account when the `AuthorizationChecker` is used.
+
 [^1]: <http://php.net/manual/en/language.basic-syntax.phptags.php>
 [^2]: <http://php.net/manual/en/language.oop5.php>
 [^3]: <http://php.net/manual/en/language.namespaces.php>
@@ -1296,3 +1542,12 @@ possible to develop an own validator[^41].
 [^39]: <https://symfony.com/doc/current/validation.html>
 [^40]: <https://symfony.com/doc/current/validation.html#constraints>
 [^41]: <https://symfony.com/doc/current/validation/custom_constraint.html>
+[^42]: <http://symfony.com/doc/current/security.html>
+[^43]: <http://symfony.com/doc/current/security.html#c-encoding-the-user-s-password>
+[^44]: <http://symfony.com/doc/current/security/entity_provider.html>
+[^45]: <http://symfony.com/doc/current/security/form_login_setup.html>
+[^46]: <http://machinesaredigging.com/2013/10/29/how-does-a-web-session-work/>
+[^47]: <http://symfony.com/doc/current/security/access_control.html>
+[^48]: <http://symfony.com/doc/current/best_practices/security.html#the-security-annotation>
+[^49]: <http://symfony.com/doc/current/bundles/SensioFrameworkExtraBundle/annotations/security.html>
+[^50]: <http://symfony.com/doc/current/security/voters.html>
